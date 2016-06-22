@@ -1,0 +1,221 @@
+---
+title: "Final Project for QMSS Data Mining"
+author: "Saad Khalid (sk3968), Adnan Hajizada (ah3326)"
+date: "May 11, 2016"
+output: html_document
+---
+
+In this project we are examining the data base that evaluated the quality and the various chemical components of more than 1600 Red Wines. At first let's review the data.
+
+#Load Libraries
+```{r}
+# loading the required packages for the project
+  library(ggplot2)
+  library(dplyr)
+  library(plyr)
+  library(GGally)
+  library(RColorBrewer)
+  library(ggthemes)
+  library(gridExtra)
+
+#Read In the set
+redWine <- read.csv('wineQualityReds.csv')
+wineQuality <- read.csv("wineQualityReds.csv")
+
+```
+
+
+#### Dimensions of the data-set:
+```{r, echo = FALSE}
+dim(redWine)
+```
+
+#### Names of the variables in the data-set:
+```{r, echo = FALSE}
+names(redWine)
+```
+
+#### Checking the data types of all the variables in the data-set:
+```{r, echo = FALSE}
+str(redWine)
+```
+
+## histogram for quality values of wines
+```{r, echo=FALSE}
+
+ggplot(aes(x = quality), data = redWine) +
+  geom_histogram()
+```
+
+## What are the key variables that need to be investigated in the red wine dataset?
+To aid in identification, we will make a plot matrix.
+```{r, eval=TRUE, warning=FALSE, message=FALSE, fig.height= 12, fig.width= 12, echo=FALSE}
+## Sampling 800 rows from a total of 1599 rows to reduce execution time for the multiplot
+redWineSampled <- redWine[sample(1:dim(redWine)[1], 800), ]
+
+## making a plot matric for all variables in the dataset
+ggpairs(redWineSampled)
+```
+
+## Is there a relationship between alcohol concentration and wine quality?
+```{r, echo=FALSE}
+## density functions for alcohol across all quality values
+
+ggplot(aes(x = alcohol), data = redWine) + geom_density(fill = 'green', 
+               alpha = 0.5) + 
+  geom_vline(data = ddply(redWine, "quality", 
+                          summarize, 
+                          median_alcohol = median(alcohol)), 
+             aes(xintercept=median_alcohol),
+             linetype = 2) +
+  facet_wrap(~quality) +
+  ggtitle("Density functions of alcohol across quality")
+
+## boxplots for alcohol across all quality values
+
+ggplot(aes(y = alcohol,x = as.factor(quality)), data = redWine) + 
+  geom_boxplot() + 
+  geom_point(stat = 'summary', 
+             fun.y = mean, 
+             pch = 4, 
+             size = 3) + 
+  xlab("Wine Quality") + 
+  ylab("Alcohol") + 
+  ggtitle("Alcohol against Wine quality")
+```
+The above plots reveal that alcohol concentration is clearly related to wine quality for mediocre and high quality values(5 - 8). As the alcohol concentration increases the wine quality also increases.
+
+## Does density have a relationship with wine quality?
+To answer this, we decided to make a few plots that would enhance understanding of the relationship of density with other variables (particularly those related to quality) in the data-set
+
+```{r, echo=FALSE}
+## scatterplot between density and alcohol
+ggplot(aes(x = density, y = alcohol), data = redWine) +
+  geom_point(alpha = 0.4, 
+             #postion = 'jitter', 
+             size = 2.5)
+```
+ 
+
+
+
+#Modeling
+##Read in the data and split it into testing and training
+```{r}
+## read in the data for red wine quality
+wineQuality <- read.csv("wineQualityReds.csv")
+## removing the index column
+wineQuality <- wineQuality[, -1]
+
+## checking the available variables and variable types
+names(wineQuality)
+str(wineQuality)
+
+## some exploratory charts here
+
+## spliting into test and training set 
+set.seed(123)
+train_idx <- sample(x = 1:dim(wineQuality)[1], replace = FALSE, size = 1000)
+wineQuality_train <- wineQuality[train_idx, ]
+wineQuality_test <- wineQuality[-train_idx, ]
+```
+
+We are taking quality of the wine as a dependent variable and we are going to use other factors to predict the quality of the red wine. The quality of the wine is assessed by the wine tasters and is based on their subjective tastes and preferences. So in a sense we are predicting human behavior. These results can be extrapolated (if all external validity questions are taken care of) to a bigger population of wine drinkers and can possibly be used to predict "preferences" and maybe even sales of the wine based on its chemical content.
+We are going to try and assess several models and choose the one that predicts the best.
+
+##Simple Linear Model
+```{r}
+## starting with a simple linear model with forward selection 
+null_model <- lm(quality ~ 1, data = wineQuality_train)
+full_model <- lm(quality ~ ., data = wineQuality_train)
+fwd_sel <- step(null_model, scope = list(lower = null_model, upper = full_model), direction = "forward")
+
+lm_preds <- predict(fwd_sel, newdata = wineQuality_test)
+lm_preds <- round(lm_preds)
+
+lm_conf_matrix <- table(wineQuality_test$quality, lm_preds)
+lm_conf_matrix
+## checking the accuracy of the model 
+lm_accuracy <- (lm_conf_matrix[3, 1] + lm_conf_matrix[4, 2] + lm_conf_matrix[5, 3])/ dim(wineQuality_test)[1]
+lm_accuracy
+```
+In order to measure the accuracy of prediction we are rounding our predictions with the
+round(lm_preds)
+line and after that we comapre our predictions to the actual data in the testing set. If we look at the lm confusion matrix we can calcualte the accuracy of our prediction which is roughly around 60% (0.59 to be exact)
+
+##Add polynomials to our model to increase predictability
+After testing the simple linear modeal we are trying to explore the curveture of our data set and add the polynomials to the data set:
+```{r}
+polynomial_lm <- lm <- lm(formula = quality ~ alcohol + volatile.acidity + sulphates + chlorides + 
+                            total.sulfur.dioxide + free.sulfur.dioxide + pH + I(alcohol ^ 2) + 
+                            I(volatile.acidity ^ 2) + I(pH ^ 2), 
+                          data = wineQuality_train)
+
+poly_preds <- predict(polynomial_lm, newdata = wineQuality_test)
+poly_preds <- round(poly_preds)
+
+poly_lm_conf_matrix <- table(wineQuality_test$quality, poly_preds)
+poly_lm_conf_matrix
+## checking the accuracy of the model 
+poly_accuracy <- (poly_lm_conf_matrix[3, 1] + poly_lm_conf_matrix[4, 2] + poly_lm_conf_matrix[5, 3])/ dim(wineQuality_test)[1]
+poly_accuracy
+```
+We have tested several square and cubic terms on sveral variables and came to a conclusion that adding square terms to alcohol, volatile acidity and pH balance yields the best resutls.
+The accuracy of this prediction is slightly better than a simple linear model but is not significcnatly different. It is still 60%. 
+
+##Generalized additive model with splines
+Now we want to test that if more flexibility will yield better results by lookng at different sections of for each variable and then adding them together.
+```{r}
+library(gam)
+ga.model <- gam(quality ~ s(alcohol,2) + s(volatile.acidity,2) + s(sulphates,2) + s(chlorides,2) + 
+                  s(total.sulfur.dioxide,2) + s(free.sulfur.dioxide,2) + s(pH,2), 
+                data = wineQuality_train)
+gam_preds <- predict(ga.model, newdata = wineQuality_test)
+gam_preds <- round(gam_preds)
+
+gam_conf_matrix <- table(wineQuality_test$quality, gam_preds)
+gam_conf_matrix
+## checking the accuracy of the model 
+gam_accuracy <- (gam_conf_matrix[3, 1] + gam_conf_matrix[4, 2] + gam_conf_matrix[5, 3])/ dim(wineQuality_test)[1]
+gam_accuracy
+```
+Generalized additive model with splines gives us an accuracy of 62% which is a 2% increase from the previous model.
+
+##Multinomial logistic regression
+Now, let's switch from linear continuous response methods to classification methods
+```{r}
+library(nnet)
+logit <- multinom(formula = quality ~ alcohol + volatile.acidity + sulphates + chlorides + 
+                    total.sulfur.dioxide + free.sulfur.dioxide + pH, 
+                  data = wineQuality_train)
+
+logit_preds <- predict(logit, newdata = wineQuality_test)
+
+logit_conf_matrix <- table(wineQuality_test$quality, logit_preds)
+logit_conf_matrix
+## checking the accuracy of the model 
+logit_accuracy <- sum(diag(logit_conf_matrix))/ dim(wineQuality_test)[1]
+logit_accuracy
+```
+The accuracy of this model is 60% which is less than 62% of the previous model
+
+
+##Tree (Random Forest) method.
+Now from the classification methods we will test the Tree model.
+```{r}
+## trying tree (random Forests) methods for classification
+library(randomForest)
+library(gbm)
+
+set.seed(123)
+bagging_model <- randomForest(as.factor(quality) ~ ., data = wineQuality_train, ntree = 500, mtry = 4)
+bagging_pred <- predict(bagging_model, newdata = wineQuality_test)
+## bagging_pred <- round(bagging_pred)
+bagging_conf_matrix <- table(wineQuality_test$quality, bagging_pred)
+bagging_conf_matrix
+bagging_accuracy <- sum(diag(bagging_conf_matrix))/ dim(wineQuality_test)[1]
+bagging_accuracy
+```
+The random forest method  reduces variance by generating a big number of trees and then averages them out. 
+
+As a result we get a result of 71% accuracy which is the highest among our methods. It is necessary to note that the wrong predictions in the above confusion matrix are mostly close to the right ones (meaning most of the predictions are around the diagonal of the confusion matrix) by a margin of one (which means that our model is not too far off the target most of the time). we are inclined to choose this method as the one which does the best prediction on our testing data.   
